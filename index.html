@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Control ESP32 desde Render</title>
+</head>
+<body style="text-align:center; background-color: #222; color: #fff; font-family: sans-serif;">
+  <h1>Controlar ESP32 desde Render</h1>
+  <button onclick="enviar(true)">ENCENDER</button>
+  <button onclick="enviar(false)">APAGAR</button>
+
+  <script>
+    function enviar(estado) {
+      fetch("/api/led", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({estado})
+      }).then(response => response.json())
+        .then(data => console.log("Respuesta del servidor:", data));
+    }
+  </script>
+</body>
+</html>
