@@ -19,10 +19,6 @@ def init_db():
         """)
         conn.commit()
 
-@app.before_first_request
-def setup():
-    init_db()
-
 @app.route("/")
 def index():
     return open("index.html").read()
@@ -58,5 +54,5 @@ def exportar_excel():
     return send_file(nombre, as_attachment=True)
 
 if __name__ == "__main__":
-    init_db()
+    init_db()  # Aquí se inicializa la base de datos al arrancar
     app.run(host="0.0.0.0", port=10000)
