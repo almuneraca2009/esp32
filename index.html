@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>ESP32 IoT Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/justgage@1.3.2/justgage.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/raphael@2.3.0/raphael.min.js"></script>
+  <style>
+    body { background-color: #151a30; color: white; font-family: 'Segoe UI', sans-serif; padding-top: 70px; }
+    .card { background-color: #1f2541; border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
+    .card h5 { color: #00d68f; }
+    .switch {
+      position: relative; display: inline-block; width: 60px; height: 34px;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider {
+      position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc; transition: .4s; border-radius: 34px;
+    }
+    .slider:before {
+      position: absolute; content: ""; height: 26px; width: 26px; left: 4px;
+      bottom: 4px; background-color: white; transition: .4s; border-radius: 50%;
+    }
+    input:checked + .slider { background-color: #00d68f; }
+    input:checked + .slider:before { transform: translateX(26px); }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">ESP32 IoT Dashboard</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link active" onclick="mostrar('dashboard')">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="mostrar('historial')">Historial</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container" id="dashboard">
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <div class="card p-3 text-center">
+        <h5>Temperatura</h5>
+        <div id="gaugeTemp" style="width:100%; height:220px;"></div>
+        <p class="mt-2" id="valTemp">-- °C</p>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card p-3 text-center">
+        <h5>Humedad</h5>
+        <div id="gaugeHum" style="width:100%; height:220px;"></div>
+        <p class="mt-2" id="valHum">-- %</p>
+      </div>
+    </div>
+  </div>
+  <div class="card p-3 mb-4">
+    <h5>Control de Salida</h5>
+    <label class="switch">
+      <input type="checkbox" id="controlSwitch" onchange="cambiarSalida(this.checked)">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <div class="card p-3">
+    <h5>Lecturas Recientes</h5>
+    <canvas id="chartRealtime" height="120"></canvas>
+  </div>
+</div>
+
+<div class="container d-none" id="historial">
+  <div class="card p-3 mb-3">
+    <h5>Historial de Datos</h5>
+    <div class="row mb-2">
+      <div class="col-md-6">
+        <input type="datetime-local" id="fromDate" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <input type="datetime-local" id="toDate" class="form-control">
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="buscarHistorial()">Buscar</button>
+    <a id="exportLink" class="btn btn-success ms-2" href="#">Exportar Excel</a>
+  </div>
+  <div class="card p-3">
+    <canvas id="chartHistorial" height="100"></canvas>
+    <table class="table table-dark table-striped mt-3">
+      <thead><tr><th>Temp</th><th>Hum</th><th>Fecha</th></tr></thead>
+      <tbody id="tablaHistorial"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function mostrar(id) {
+  document.getElementById("dashboard").classList.add("d-none");
+  document.getElementById("historial").classList.add("d-none");
+  document.getElementById(id).classList.remove("d-none");
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
