@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>ESP32 Dashboard Corregido</title>
+  <script src="https://www.gstatic.com/charts/loader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #1e1e2f; color: white; padding-top: 70px; font-family: 'Segoe UI', sans-serif; }
+    canvas, .gauge-container { background-color: #2c2c3e; border-radius: 10px; padding: 10px; margin-bottom: 20px; }
+    .form-control, .btn, .table { background-color: #2c2c3e; color: white; border: none; }
+    .nav-link { cursor: pointer; }
+    .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc; transition: .4s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px;
+      bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider:before { transform: translateX(26px); }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">ESP32 WebApp</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link active" onclick="mostrar('dashboard')">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="mostrar('historial')">Historial</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div id="dashboard" class="container">
+  <h2 class="text-center mb-4">Lecturas en Tiempo Real</h2>
+  <div class="row text-center">
+    <div class="col-md-6"><div id="gaugeTemp" class="gauge-container"></div></div>
+    <div class="col-md-6"><div id="gaugeHum" class="gauge-container"></div></div>
+  </div>
+  <div class="text-center my-4">
+    <h4>Control de salida</h4>
+    <label class="switch">
+      <input type="checkbox" id="controlSwitch" onchange="cambiarSalida(this.checked)">
+      <span class="slider"></span>
+    </label>
+  </div>
+</div>
+
+<div id="historial" class="container d-none">
+  <h2 class="text-center mb-4">Historial y Exportación</h2>
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <label>Desde:</label>
+      <input type="datetime-local" id="fromDate" class="form-control">
+    </div>
+    <div class="col-md-6">
+      <label>Hasta:</label>
+      <input type="datetime-local" id="toDate" class="form-control">
+    </div>
+  </div>
+  <button class="btn btn-primary mb-2" onclick="buscarHistorial()">Buscar</button>
+  <a id="exportLink" class="btn btn-success mb-2 ms-2" href="#" target="_blank">Exportar a Excel</a>
+  <table class="table table-bordered">
+    <thead><tr><th>Temperatura</th><th>Humedad</th><th>Timestamp</th></tr></thead>
+    <tbody id="tablaDatos"></tbody>
+  </table>
+  <nav><ul class="pagination" id="paginacion"></ul></nav>
+  <canvas id="graficaRango" height="100"></canvas>
+</div>
+
+<script>
+google.charts.load('current', {packages: ['gauge']});
+let tempData, humData, gaugeTemp, gaugeHum;
+let intervalo;
+
+function drawGauges(temp, hum) {
+  tempData.setValue(0, 1, temp);
+  humData.setValue(0, 1, hum);
+  gaugeTemp.draw(tempData, {width: 300, height: 250, redFrom: 40, yellowFrom:30, yellowTo: 40, minorTicks: 5, max: 50});
+  gaugeHum.draw(humData, {width: 300, height: 250, redFrom: 90, yellowFrom:70, yellowTo: 90, minorTicks: 5, max: 100});
+}
+
+function actualizarDashboard() {
+  fetch("/api/sensores").then(r => r.json()).then(d => {
+    drawGauges(d.temperatura, d.humedad);
+  });
+}
+
+function cambiarSalida(estado) {
+  fetch("/api/led", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ estado })
+  });
+}
+
+function mostrar(id) {
+  document.getElementById("dashboard").classList.add("d-none");
+  document.getElementById("historial").classList.add("d-none");
+  document.getElementById(id).classList.remove("d-none");
+}
+
+let datosTotales = [], paginaActual = 1;
+function buscarHistorial() {
+  const f1 = document.getElementById("fromDate").value;
+  const f2 = document.getElementById("toDate").value;
+  if (!f1 || !f2) return alert("Seleccione ambas fechas");
+  fetch(`/api/historico?from=${f1}&to=${f2}`).then(r => r.json()).then(d => {
+    datosTotales = d;
+    paginaActual = 1;
+    mostrarPagina();
+    graficarRango(d);
+    document.getElementById("exportLink").href = `/api/exportar_excel?from=${f1}&to=${f2}`;
+  });
+}
+
+function mostrarPagina() {
+  const tabla = document.getElementById("tablaDatos");
+  const pag = document.getElementById("paginacion");
+  tabla.innerHTML = ""; pag.innerHTML = "";
+  const porPag = 50;
+  const total = Math.ceil(datosTotales.length / porPag);
+  const ini = (paginaActual - 1) * porPag, fin = Math.min(ini + porPag, datosTotales.length);
+  for (let i = ini; i < fin; i++) {
+    const d = datosTotales[i];
+    tabla.innerHTML += `<tr><td>${d.temperatura}</td><td>${d.humedad}</td><td>${d.timestamp}</td></tr>`;
+  }
+  for (let i = 1; i <= total; i++) {
+    pag.innerHTML += `<li class="page-item ${i === paginaActual ? 'active' : ''}">
+      <button class="page-link" onclick="paginaActual=${i};mostrarPagina();">${i}</button></li>`;
+  }
+}
+
+function graficarRango(data) {
+  const ctx = document.getElementById("graficaRango").getContext("2d");
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: data.map(d => d.timestamp),
+      datasets: [
+        { label: "Temperatura", data: data.map(d => d.temperatura), borderColor: "orange", tension: 0.4 },
+        { label: "Humedad", data: data.map(d => d.humedad), borderColor: "cyan", tension: 0.4 }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: "white" } }
+      },
+      scales: {
+        x: { ticks: { color: "white" } },
+        y: { ticks: { color: "white" }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+google.charts.setOnLoadCallback(() => {
+  tempData = google.visualization.arrayToDataTable([["Label", "Value"], ["°C", 0]]);
+  humData = google.visualization.arrayToDataTable([["Label", "Value"], ["%", 0]]);
+  gaugeTemp = new google.visualization.Gauge(document.getElementById("gaugeTemp"));
+  gaugeHum = new google.visualization.Gauge(document.getElementById("gaugeHum"));
+  drawGauges(0, 0);
+  intervalo = setInterval(actualizarDashboard, 4000);
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
