@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>ESP32 Dashboard Integrado</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    body { background-color: #1e1e2f; color: white; font-family: 'Segoe UI', sans-serif; padding-top: 70px; }
+    canvas { background-color: #2c2c3e; border-radius: 10px; }
+    .form-control, .btn, .table { background-color: #2c2c3e; color: white; border: none; }
+    .switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc; transition: .4s; border-radius: 34px; }
+    .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px;
+      bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+    input:checked + .slider { background-color: #2196F3; }
+    input:checked + .slider:before { transform: translateX(26px); }
+    .nav-link { cursor: pointer; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">ESP32 WebApp</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarNav">
+      <ul class="navbar-nav">
+        <li class="nav-item"><a class="nav-link active" onclick="mostrar('dashboard')">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" onclick="mostrar('historial')">Historial</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div id="dashboard" class="container">
+  <h2 class="text-center mb-4">Lecturas en Tiempo Real</h2>
+  <div class="row text-center">
+    <div class="col-md-6">
+      <h4>Temperatura</h4>
+      <h1 id="tempVal">-- °C</h1>
+    </div>
+    <div class="col-md-6">
+      <h4>Humedad</h4>
+      <h1 id="humVal">-- %</h1>
+    </div>
+  </div>
+  <div class="text-center my-4">
+    <h4>Control de salida</h4>
+    <label class="switch">
+      <input type="checkbox" id="controlSwitch" onchange="cambiarSalida(this.checked)">
+      <span class="slider"></span>
+    </label>
+  </div>
+  <canvas id="graficaActual"></canvas>
+</div>
+
+<div id="historial" class="container d-none">
+  <h2 class="text-center mb-4">Historial y Exportación</h2>
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <label>Desde:</label>
+      <input type="datetime-local" id="fromDate" class="form-control">
+    </div>
+    <div class="col-md-6">
+      <label>Hasta:</label>
+      <input type="datetime-local" id="toDate" class="form-control">
+    </div>
+  </div>
+  <div class="mb-3">
+    <button class="btn btn-primary" onclick="buscarHistorial()">Buscar</button>
+    <a id="exportLink" class="btn btn-success ms-3" href="#" target="_blank">Exportar a Excel</a>
+  </div>
+  <table class="table table-bordered">
+    <thead><tr><th>Temperatura</th><th>Humedad</th><th>Timestamp</th></tr></thead>
+    <tbody id="tablaDatos"></tbody>
+  </table>
+  <nav><ul class="pagination" id="paginacion"></ul></nav>
+  <canvas id="graficaRango"></canvas>
+</div>
+
+<script>
+let datosTotales = [], paginaActual = 1;
+
+function mostrar(id) {
+  document.getElementById("dashboard").classList.add("d-none");
+  document.getElementById("historial").classList.add("d-none");
+  document.getElementById(id).classList.remove("d-none");
+}
+
+function actualizarDashboard() {
+  fetch("/api/sensores").then(res => res.json()).then(data => {
+    document.getElementById("tempVal").innerText = data.temperatura + " °C";
+    document.getElementById("humVal").innerText = data.humedad + " %";
+
+    const ctx = document.getElementById("graficaActual").getContext("2d");
+    new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: ["Temp", "Humedad"],
+        datasets: [{
+          label: "Lectura actual",
+          data: [data.temperatura, data.humedad],
+          backgroundColor: ["orange", "cyan"]
+        }]
+      },
+      options: { responsive: true, indexAxis: 'y' }
+    });
+  });
+}
+
+function cambiarSalida(estado) {
+  fetch("/api/led", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ estado })
+  });
+}
+
+function buscarHistorial() {
+  const f1 = document.getElementById("fromDate").value;
+  const f2 = document.getElementById("toDate").value;
+  if (!f1 || !f2) return alert("Seleccione ambas fechas");
+
+  fetch(`/api/historico?from=${f1}&to=${f2}`)
+    .then(res => res.json())
+    .then(datos => {
+      datosTotales = datos;
+      paginaActual = 1;
+      mostrarPagina();
+      document.getElementById("exportLink").href = `/api/exportar_excel?from=${f1}&to=${f2}`;
+      graficarRango(datos);
+    });
+}
+
+function mostrarPagina() {
+  const tabla = document.getElementById("tablaDatos");
+  const pag = document.getElementById("paginacion");
+  tabla.innerHTML = ""; pag.innerHTML = "";
+
+  const perPage = 50;
+  const totalPages = Math.ceil(datosTotales.length / perPage);
+  const ini = (paginaActual - 1) * perPage;
+  const fin = Math.min(ini + perPage, datosTotales.length);
+
+  for (let i = ini; i < fin; i++) {
+    const d = datosTotales[i];
+    tabla.innerHTML += `<tr><td>${d.temperatura}</td><td>${d.humedad}</td><td>${d.timestamp}</td></tr>`;
+  }
+  for (let i = 1; i <= totalPages; i++) {
+    pag.innerHTML += `<li class="page-item ${i === paginaActual ? 'active' : ''}">
+      <button class="page-link" onclick="paginaActual=${i}; mostrarPagina();">${i}</button></li>`;
+  }
+}
+
+function graficarRango(datos) {
+  const ctx = document.getElementById("graficaRango").getContext("2d");
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: datos.map(d => d.timestamp),
+      datasets: [
+        { label: "Temperatura (°C)", data: datos.map(d => d.temperatura), borderColor: "orange", fill: false },
+        { label: "Humedad (%)", data: datos.map(d => d.humedad), borderColor: "cyan", fill: false }
+      ]
+    },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } }
+  });
+}
+
+setInterval(actualizarDashboard, 4000);
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
